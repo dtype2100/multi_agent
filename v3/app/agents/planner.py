@@ -48,8 +48,20 @@ def extract_json(text: str) -> str:
     Returns:
         str: 추출된 JSON 문자열
     """
-    # JSON 객체를 찾는 정규식 패턴
-    pattern = r'\{[\s\S]*\}'
+    # JSON 객체를 찾는 정규식 패턴 (더 정확한 버전)
+    pattern = r'\{(?:[^{}]|(?R))*\}'
+    match = re.search(pattern, text)
+    if match:
+        json_str = match.group(0)
+        try:
+            # JSON 유효성 검사
+            json.loads(json_str)
+            return json_str
+        except json.JSONDecodeError:
+            pass
+    
+    # 첫 번째 시도가 실패하면 더 단순한 패턴으로 시도
+    pattern = r'\{[\s\S]*?\}'
     match = re.search(pattern, text)
     if match:
         return match.group(0)
