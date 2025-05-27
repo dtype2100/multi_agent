@@ -1,6 +1,7 @@
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import Optional
+import os
 
 class Config(BaseModel):
     """시스템 설정값을 관리하는 클래스"""
@@ -48,6 +49,12 @@ class Config(BaseModel):
         default=0.8,
         description="성공 판단 임계값"
     )
+    
+    # Claude AI 설정
+    claude_api_key: str = os.getenv("CLAUDE_API_KEY", "")
+    claude_model: str = os.getenv("CLAUDE_MODEL", "claude-3-sonnet-20240229")
+    claude_temperature: float = float(os.getenv("CLAUDE_TEMPERATURE", "0.7"))
+    claude_max_tokens: int = int(os.getenv("CLAUDE_MAX_TOKENS", "4096"))
     
     class Config:
         arbitrary_types_allowed = True

@@ -39,11 +39,46 @@ ENV/
 memory.json
 .coverage
 htmlcov/
-.pytest_cache/ 
+.pytest_cache/
 
+# Data files
 *.json
 *.txt
 *.csv
 *.jsonl
+!config.json  # 설정 파일은 제외
 
+# Model files
 models/
+*.bin
+*.gguf
+*.pt
+*.pth
+*.onnx
+*.safetensors
+
+# Test files
+test_output/
+test_results/
+.coverage
+coverage.xml
+.pytest_cache/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Documentation
+docs/_build/
+site/
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# System files
+.DS_Store
+Thumbs.db
