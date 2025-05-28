@@ -29,7 +29,7 @@ def should_continue(state: WorkflowState) -> str:
         state: 현재 상태
         
     Returns:
-        str: 다음 단계 ("developer", "critic", "end")
+        str: 다음 단계 ("developer" 또는 "end")
     """
     current_task = state["tasks"][state["current_task_index"]]
     current_evaluation = state["evaluations"][-1]

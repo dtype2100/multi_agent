@@ -5,6 +5,8 @@
 
 from typing import Dict, Any, List
 from pydantic import BaseModel, Field
+from langchain.output_parsers import OutputParserException # Import for specific exception
+import requests # Assuming LLM might use requests, for RequestException
 
 from .base import BaseAgent
 from ..core.memory import MemoryManager
@@ -71,37 +73,65 @@ class CriticAgent(BaseAgent):
         current_task = state["tasks"][state["current_task_index"]]
         current_result = state["results"][state["current_task_index"]]
         
-        # 이전 태스크들의 결과 수집
-        previous_results = []
-        for i in range(state["current_task_index"]):
-            if "results" in state and i < len(state["results"]):
-                previous_results.append(f"태스크 {i+1}: {state['results'][i]}")
+        # 이전 태스크들의 결과 수집 (Refactored to BaseAgent)
+        previous_results_str = self._compile_previous_results(state)
         
-        # LLM 호출
-        response = self.llm(self.prompt_template.format(
-            task_description=current_task.description,
-            code=current_result["code"],
-            explanation=current_result["explanation"],
-            test_cases="\n".join(current_result["test_cases"]),
-            previous_results="\n".join(previous_results) if previous_results else "없음",
-            success_threshold=config.success_threshold
-        ))
-        
-        # 응답 파싱
-        evaluation = self.output_parser.parse(response)
-        
-        # 메모리에 평가 결과 저장
+        evaluation_dict = {}
+        try:
+            # LLM 호출
+            response_content = self.llm(self.prompt_template.format(
+                task_description=current_task.description,
+                code=current_result.get("code", "# CODE MISSING OR ERROR IN PREVIOUS STEP"), # Handle potential missing code
+                explanation=current_result.get("explanation", "# EXPLANATION MISSING OR ERROR IN PREVIOUS STEP"),
+                test_cases="\n".join(current_result.get("test_cases", [])),
+                previous_results=previous_results_str,
+                success_threshold=config.success_threshold
+            ))
+            
+            # 응답 파싱
+            evaluation = self.output_parser.parse(response_content)
+            evaluation_dict = evaluation.dict()
+
+        except OutputParserException as e:
+            error_message = f"CriticAgent: Error parsing LLM response for task {current_task.task_id}. Details: {str(e)}"
+            print(error_message)
+            evaluation_dict = {
+                "score": 0.0,
+                "feedback": error_message,
+                "improvements": ["Resolve the parsing error in Critic agent's LLM response."],
+                "is_success": False
+            }
+        except requests.exceptions.RequestException as e: # More specific network error
+            error_message = f"CriticAgent: Network error during LLM call for task {current_task.task_id}. Details: {str(e)}"
+            print(error_message)
+            evaluation_dict = {
+                "score": 0.0,
+                "feedback": error_message,
+                "improvements": ["Resolve the network error in Critic agent."],
+                "is_success": False
+            }
+        except Exception as e: # Catch any other unexpected errors
+            error_message = f"CriticAgent: An unexpected error occurred for task {current_task.task_id}. Details: {str(e)}"
+            print(error_message)
+            evaluation_dict = {
+                "score": 0.0,
+                "feedback": error_message,
+                "improvements": ["Resolve the unexpected error in Critic agent."],
+                "is_success": False
+            }
+
+        # 메모리에 평가 결과 저장 (even if it's an error response)
         self.append_conversation("critic", {
             "task_id": current_task.task_id,
-            "content": evaluation.dict()
+            "content": evaluation_dict
         })
         
         # 상태 업데이트
         if "evaluations" not in state:
             state["evaluations"] = []
-        state["evaluations"].append(evaluation.dict())
+        state["evaluations"].append(evaluation_dict)
         
-        # 반복 횟수 업데이트
+        # 반복 횟수 업데이트 (always increment iterations as an attempt was made)
         state["iterations"] = state.get("iterations", 0) + 1
         
         return state 
