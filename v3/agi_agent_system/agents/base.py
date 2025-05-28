@@ -66,6 +66,35 @@ class BaseAgent:
             content: 기록할 내용
         """
         self.memory.append("conversations", {"role": role, "content": content})
+
+    def _compile_previous_results(self, state: Dict[str, Any]) -> str:
+        """이전 태스크들의 결과를 문자열로 컴파일
+        
+        Args:
+            state: 현재 워크플로우 상태
+            
+        Returns:
+            str: 이전 태스크 결과들의 요약 문자열
+        """
+        previous_results_list = []
+        # Ensure 'results' key exists and is a list
+        if "results" in state and isinstance(state.get("results"), list):
+            # Iterate up to current_task_index, ensuring not to go out of bounds
+            # state["current_task_index"] refers to the task currently being processed,
+            # so previous results are for tasks from index 0 up to current_task_index - 1.
+            for i in range(min(state.get("current_task_index", 0), len(state["results"]))):
+                # Ensure the result at index i is not None (it could be if padded or due to prior errors)
+                result_item = state["results"][i]
+                if result_item is not None:
+                    # Assuming result_item is CodeSolution.dict()
+                    # A more concise summary than the full dict string might be:
+                    # task_summary = f"Code: {result_item.get('code', 'N/A')[:100]}..., Explanation: {result_item.get('explanation', 'N/A')[:100]}..."
+                    # For now, using a simpler string representation as per original intent.
+                    # The original formatting was f"태스크 {i+1}: {state['results'][i]}"
+                    # "태스크 {i+1} 결과:" (Task {i+1} Result:)
+                    previous_results_list.append(f"태스크 {i+1} 결과: {str(result_item)}")
+        
+        return "\n".join(previous_results_list) if previous_results_list else "없음"
     
     def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """에이전트 실행

@@ -5,6 +5,8 @@
 
 from typing import Dict, Any, List
 from pydantic import BaseModel, Field
+from langchain.output_parsers import OutputParserException # Import for specific exception
+import requests # Assuming LLM might use requests, for RequestException
 
 from .base import BaseAgent
 from ..core.memory import MemoryManager
@@ -59,30 +61,61 @@ class DeveloperAgent(BaseAgent):
         # 현재 태스크 가져오기
         current_task = state["tasks"][state["current_task_index"]]
         
-        # 이전 태스크들의 결과 수집
-        previous_results = []
-        for i in range(state["current_task_index"]):
-            if "results" in state and i < len(state["results"]):
-                previous_results.append(f"태스크 {i+1}: {state['results'][i]}")
+        # 이전 태스크들의 결과 수집 (Refactored to BaseAgent)
+        previous_results_str = self._compile_previous_results(state)
         
-        # LLM 호출
-        response = self.llm(self.prompt_template.format(
-            task_description=current_task.description,
-            previous_results="\n".join(previous_results) if previous_results else "없음"
-        ))
+        current_solution_dict = {}
+        try:
+            # LLM 호출
+            response_content = self.llm(self.prompt_template.format(
+                task_description=current_task.description,
+                previous_results=previous_results_str
+            ))
+            
+            # 응답 파싱
+            solution = self.output_parser.parse(response_content)
+            current_solution_dict = solution.dict()
+
+        except OutputParserException as e:
+            error_message = f"DeveloperAgent: Error parsing LLM response for task {current_task.task_id}. Details: {str(e)}"
+            print(error_message)
+            current_solution_dict = {
+                "code": "# ERROR: Could not parse LLM response.",
+                "explanation": error_message,
+                "test_cases": []
+            }
+        except requests.exceptions.RequestException as e: # More specific network error
+            error_message = f"DeveloperAgent: Network error during LLM call for task {current_task.task_id}. Details: {str(e)}"
+            print(error_message)
+            current_solution_dict = {
+                "code": "# ERROR: Network error during LLM call.",
+                "explanation": error_message,
+                "test_cases": []
+            }
+        except Exception as e: # Catch any other unexpected errors
+            error_message = f"DeveloperAgent: An unexpected error occurred for task {current_task.task_id}. Details: {str(e)}"
+            print(error_message)
+            current_solution_dict = {
+                "code": "# ERROR: An unexpected error occurred.",
+                "explanation": error_message,
+                "test_cases": []
+            }
         
-        # 응답 파싱
-        solution = self.output_parser.parse(response)
-        
-        # 메모리에 결과 저장
+        # 메모리에 결과 저장 (even if it's an error response)
         self.append_conversation("developer", {
             "task_id": current_task.task_id,
-            "content": solution.dict()
+            "content": current_solution_dict # Log the error or success
         })
         
         # 상태 업데이트
         if "results" not in state:
             state["results"] = []
-        state["results"].append(solution.dict())
+        
+        # Pad the list with None if it's shorter than current_task_index + 1
+        while len(state["results"]) <= state["current_task_index"]:
+            state["results"].append(None)
+        
+        # Overwrite or set the result for the current task index
+        state["results"][state["current_task_index"]] = current_solution_dict
         
         return state 
